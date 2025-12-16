@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title x-text="departmentName + ' ポートフォリオポータル'"></title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'portal-primary': '#4f46e5', // Indigo-600
+                        'portal-bg': '#f3f4f6', // Gray-100
+                    }
+                }
+            }
+        }
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+</head>
+
+<body class="bg-portal-bg min-h-screen">
+
+    <div x-data="portfolioPortal()" x-init="fetchData()" class="relative">
+
+        <header class="bg-white shadow-md sticky top-0 z-20">
+            <div
+                class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center">
+                <h1 class="text-3xl font-extrabold text-portal-primary flex items-end gap-3"><span
+                        x-text="departmentName + ' '"></span>ポートフォリオポータル</h1>
+
+                <div class="mt-4 sm:mt-0 flex flex-wrap gap-2">
+                    <input type="text" x-model.debounce.300ms="searchTerm" placeholder="名前/作品名で検索..."
+                        class="border border-gray-300 rounded-lg p-2 text-sm w-full sm:w-auto">
+
+                    <select x-model="selectedTag" class="border border-gray-300 rounded-lg p-2 text-sm">
+                        <option value="All">タグでフィルタ (全て)</option>
+                        <template x-for="tag in availableTags" :key="tag">
+                            <option :value="tag" x-text="tag"></option>
+                        </template>
+                    </select>
+
+                    <select x-model="sortKey" class="border border-gray-300 rounded-lg p-2 text-sm">
+                        <option value="updated_at" selected>ソート：新着順</option>
+                        <option value="name">ソート：名前順</option>
+                        <option value="year">ソート：学年順</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="border-t border-gray-200 bg-gray-50">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap gap-3 items-center">
+                    <span class="text-sm font-semibold text-gray-700">学年フィルター:</span>
+
+                    <div class="flex space-x-2">
+
+                        <button @click="activeYearFilter = 'All'"
+                            class="px-4 py-1.5 rounded-full text-sm font-medium transition duration-150"
+                            :class="activeYearFilter === 'All' ? 'bg-portal-primary text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-portal-primary/20'">
+                            全体
+                        </button>
+
+                        <template x-for="grade in grades" :key="grade.year">
+                            <button @click="activeYearFilter = grade.year"
+                                class="px-4 py-1.5 rounded-full text-sm font-medium transition duration-150"
+                                :class="activeYearFilter === grade.year ? 'bg-portal-primary text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-portal-primary/20'">
+                                <span x-text="grade.label"></span> (<span x-text="grade.gradYear % 100"></span>年卒)
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div x-show="isLoading" class="text-center text-lg text-gray-500 py-12">
+                データを読み込み中...
+            </div>
+            <div x-show="!isLoading && combinedFilteredPortfolios.length === 0"
+                class="text-center text-lg text-gray-500 py-12">
+                該当する作品が見つかりませんでした。
+            </div>
+
+            <div x-show="!isLoading">
+                <template x-for="grade in grades" :key="grade.year">
+                    <section class="mb-12" x-show="shouldShowSection(grade.year)">
+
+                        <h2 class="text-3xl font-extrabold text-gray-800 mb-6 border-b-4 border-portal-primary/50 pb-2">
+                            <span x-text="grade.label"></span>
+                            <span class="text-xl text-gray-500 font-normal ml-2">
+                                (<span x-text="grade.gradYear % 100"></span>年卒)
+                            </span>
+                        </h2>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+
+                            <template x-for="portfolio in filteredPortfoliosByGrade(grade.year)" :key="portfolio.name">
+                                <a :href="portfolio.link_type === 'Portfolio' || portfolio.link_type === 'Site' ? portfolio.url : '#'"
+                                    :target="portfolio.link_type === 'Portfolio' || portfolio.link_type === 'Site' ? '_blank' : '_self'"
+                                    @click.prevent="handleCardClick(portfolio)" x-data="{ hovered: false }"
+                                    @mouseenter="hovered = true" @mouseleave="hovered = false"
+                                    class="block group rounded-xl overflow-hidden shadow-lg transition duration-300 ease-in-out bg-white transform cursor-pointer"
+                                    :class="hovered ? 'scale-[1.03] shadow-2xl ring-2 ring-portal-primary' : 'scale-100 shadow-xl'">
+
+                                    <div class="aspect-video overflow-hidden relative">
+                                        <img loading="lazy" :src="portfolio.thumbnail_url"
+                                            :alt="'作品サムネイル ' + portfolio.name"
+                                            @error="this.onerror=null; this.src='https://via.placeholder.com/640x360?text=Image+Load+Error'"
+                                            class="w-full h-full object-cover transition duration-300 ease-in-out group-hover:opacity-85">
+
+                                    </div>
+
+                                    <div class="p-4 relative">
+
+                                        <div
+                                            class="absolute top-4 right-4 bg-portal-primary text-white p-1 rounded-full shadow-lg z-10">
+                                            <span x-show="portfolio.link_type === 'Video'">▶️</span>
+                                            <span x-show="portfolio.link_type === 'PDF'">📄</span>
+                                            <span
+                                                x-show="portfolio.link_type === 'Portfolio' || portfolio.link_type === 'Site'">🌍</span>
+                                        </div>
+
+                                        <h3
+                                            class="text-xl font-extrabold text-gray-900 group-hover:text-portal-primary transition duration-150 truncate pr-10">
+                                            <span class="text-base font-semibold mr-1"
+                                                x-text="portfolio.student_id"></span>
+                                            <span x-text="portfolio.student"></span>
+                                        </h3>
+
+                                        <p class="text-sm text-gray-600 mt-1 line-clamp-2"
+                                            x-text="portfolio.note || '作品概要はありません'"></p>
+
+                                        <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                                            <template
+                                                x-for="tag in portfolio.tags.split(',').map(t => t.trim()).filter(t => t)"
+                                                :key="tag">
+                                                <span
+                                                    class="bg-portal-primary/10 text-portal-primary font-medium px-2 py-0.5 rounded-full"
+                                                    x-text="tag"></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </a>
+                            </template>
+                        </div>
+                    </section>
+                </template>
+            </div>
+
+        </main>
+
+        <footer class="mt-12 py-4 text-center text-sm text-gray-500 border-t border-gray-200">
+            &copy; 2025 ゲーム科ポートフォリオポータル. All rights reserved.
+        </footer>
+
+        <div x-cloak x-show="isModalOpen"
+            class="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4"
+            @click.self="closeModal()">
+            <div class="bg-white rounded-lg shadow-2xl w-full max-w-4xl h-full max-h-[90vh] relative">
+
+                <button @click="closeModal()"
+                    class="absolute top-0 right-0 m-3 text-gray-700 hover:text-red-600 z-10 p-2 bg-white rounded-full">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
+                </button>
+
+                <div class="w-full h-full p-6">
+                    <h3 class="text-lg font-semibold mb-2" x-text="currentMediaType === 'Video' ? '動画再生' : 'PDFビューア'">
+                    </h3>
+
+                    <iframe :src="currentMediaUrl"
+                        class="w-full h-[calc(100%-40px)] border-2 border-gray-300 rounded-md"
+                        allow="autoplay; encrypted-media" allowfullscreen>
+                    </iframe>
+
+                    <p class="text-xs text-gray-500 mt-1">※ リンク元の設定により表示できない場合があります</p>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // =======================================================
+        // 🚨 管理者設定エリア 🚨 (このブロック内を編集してください)
+        // =======================================================
+
+        // 0. 学科名を設定してください
+        const DEPARTMENT_NAME = 'ゲーム科';
+
+        // 1. Google Apps Script の公開 URL に置き換えてください
+        const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxcZnluc2pk0aPnGoGc3mgJD7uS1OgD1Dn6nWWnij2OrepAeWI2ntSKqVSU4Okdg2uh/exec';
+
+        // 2. 学年と卒業年度のマッピングを設定してください
+        const GRADE_MAPPING = [
+            { year: 3, label: '3年生', gradYear: 2026 },
+            { year: 2, label: '2年生', gradYear: 2027 },
+            { year: 1, label: '1年生', gradYear: 2028 },
+        ];
+
+        // =======================================================
+        // 🚨 管理者設定エリア 終了 🚨 (ここから下は原則変更不要です)
+        // =======================================================
+
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('portfolioPortal', () => ({
+
+                // 状態管理
+                portfolios: [], // 元データ
+                isLoading: true,
+
+                departmentName: DEPARTMENT_NAME,
+
+                // フィルター/ソートの状態
+                searchTerm: '',
+                selectedTag: 'All',
+                activeYearFilter: 'All', // 'All' は文字列
+                sortKey: 'updated_at',
+
+                // モーダル状態
+                isModalOpen: false,
+                currentMediaUrl: '',
+                currentMediaType: '', // 'Video' or 'PDF'
+
+                grades: GRADE_MAPPING,
+
+                // =======================================================
+                // 1. データ取得
+                // =======================================================
+                async fetchData() {
+                    this.isLoading = true;
+                    try {
+                        const response = await fetch(GAS_WEB_APP_URL);
+                        if (!response.ok) {
+                            throw new Error('GASからのデータ取得に失敗しました。');
+                        }
+                        const data = await response.json();
+
+                        // データのクリーンアップと初期化
+                        this.portfolios = data.map(p => ({
+                            ...p,
+                            // yearを数値に変換 (GAS側で既に変換済みだが、フロントでも念のため実行)
+                            year: parseInt(p.year) || 0,
+                            // updated_atをDateオブジェクトまたは比較可能な値に変換
+                            updated_at: p.updated_at ? new Date(p.updated_at).getTime() : 0,
+                            student_id: p.student_id || '',
+                            tags: p.tags || '',
+                            thumbnail_url: p.thumbnail_url || 'https://via.placeholder.com/640x360?text=No+Image',
+                        }));
+
+                    } catch (error) {
+                        console.error("データ取得エラー:", error);
+                        this.portfolios = [];
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                // =======================================================
+                // 2. 計算プロパティ / メインのフィルタリングロジック
+                // =======================================================
+
+                get availableTags() {
+                    if (this.portfolios.length === 0) return [];
+                    const allTags = new Set();
+                    this.portfolios.forEach(p => {
+                        if (p.tags) {
+                            p.tags.split(',').map(t => t.trim()).filter(t => t).forEach(tag => allTags.add(tag));
+                        }
+                    });
+                    return Array.from(allTags).sort();
+                },
+
+                // 検索、タグフィルタ、ソートを統合したリスト
+                get combinedFilteredPortfolios() {
+                    let filtered = this.portfolios;
+
+                    // 1. 検索フィルタリング
+                    if (this.searchTerm) {
+                        const term = this.searchTerm.toLowerCase();
+                        filtered = filtered.filter(p =>
+                            p.name.toLowerCase().includes(term) ||
+                            (p.student && p.student.toLowerCase().includes(term)) || // 氏名も検索対象に追加
+                            (p.note && p.note.toLowerCase().includes(term))
+                        );
+                    }
+
+                    // 2. タグフィルタリング
+                    if (this.selectedTag !== 'All') {
+                        const tag = this.selectedTag;
+                        filtered = filtered.filter(p =>
+                            p.tags && p.tags.split(',').map(t => t.trim()).includes(tag)
+                        );
+                    }
+
+                    // 3. ソート
+                    const key = this.sortKey;
+                    filtered.sort((a, b) => {
+                        // 新着順 (updated_at) は降順 (新しいものが先)
+                        if (key === 'updated_at') {
+                            return b[key] - a[key];
+                        }
+                        // 名前順は昇順 (文字列比較)
+                        else if (key === 'name') {
+                            return a[key].localeCompare(b[key], 'ja', { sensitivity: 'base' });
+                        }
+                        // 学年順は降順 (学年が若い順、つまり year が大きい順)
+                        else if (key === 'year') {
+                            return b[key] - a[key];
+                        }
+                        return 0;
+                    });
+
+                    return filtered;
+                },
+
+                // 指定された学年の作品のみを抽出 (セクション表示用)
+                filteredPortfoliosByGrade(year) {
+                    return this.combinedFilteredPortfolios.filter(p => p.year === year);
+                },
+
+                // 🚨 修正点2: activeYearFilterを数値に変換して比較することで、3年生が表示されない問題を解消
+                shouldShowSection(year) {
+                    if (this.activeYearFilter === 'All') {
+                        // 'All'の場合、該当学年の作品があるなら表示
+                        return this.filteredPortfoliosByGrade(year).length > 0;
+                    }
+                    // フィルターが数値（例: 3）の場合、yearと厳密に比較
+                    return parseInt(this.activeYearFilter) === year;
+                },
+
+                // =======================================================
+                // 3. モーダル/リンク制御
+                // =======================================================
+
+                handleCardClick(portfolio) {
+                    if (portfolio.link_type === 'Video' || portfolio.link_type === 'PDF') {
+                        this.openModal(portfolio.url, portfolio.link_type);
+                    } else {
+                        window.open(portfolio.url, '_blank');
+                    }
+                },
+
+                // モーダルを開く
+                openModal(url, type) {
+                    let srcUrl = url;
+                    this.currentMediaType = type;
+
+                    // Video (YouTube) のURLを埋め込み形式に強制変換
+                    if (type === 'Video') {
+                        if (url.includes('youtube.com/watch?v=')) {
+                            srcUrl = url.replace('watch?v=', 'embed/');
+                        }
+                        else if (url.includes('youtu.be/')) {
+                            srcUrl = url.replace('youtu.be/', 'youtube.com/embed/');
+                        }
+                        // 追加: モーダル内での自動再生やUI非表示オプションを追加
+                        if (!srcUrl.includes('?')) {
+                            srcUrl += '?';
+                        } else {
+                            srcUrl += '&';
+                        }
+                        srcUrl += 'autoplay=1&rel=0';
+                    }
+
+                    // PDFの場合、埋め込みに適した形式に変換を試みる（Google Driveの場合）
+                    else if (type === 'PDF' && url.includes('drive.google.com')) {
+                        // 共有リンクを埋め込みビューア形式に変換
+                        srcUrl = url.replace('/view', '/preview');
+                    }
+
+                    this.currentMediaUrl = srcUrl;
+                    this.isModalOpen = true;
+                    document.body.style.overflow = 'hidden';
+                },
+
+                // モーダルを閉じる
+                closeModal() {
+                    this.isModalOpen = false;
+                    this.currentMediaUrl = '';
+                    this.currentMediaType = '';
+                    document.body.style.overflow = 'auto';
+                }
+
+            }));
+        });
+    </script>
+
+</body>
+
+</html>
