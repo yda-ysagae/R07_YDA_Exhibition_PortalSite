@@ -28,8 +28,10 @@
         <header class="bg-white shadow-md sticky top-0 z-20">
             <div
                 class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center">
-                <h1 class="text-3xl font-extrabold text-portal-primary flex items-end gap-3"><span
-                        x-text="departmentName + ' '"></span>ポートフォリオポータル</h1>
+                <h1 class="text-2xl sm:text-3xl font-extrabold text-portal-primary leading-tight">
+                    <span x-text="departmentName"></span>
+                    <span class="inline-block">ポートフォリオポータル</span>
+                </h1>
 
                 <div class="mt-4 sm:mt-0 flex flex-wrap gap-2">
                     <input type="text" x-model.debounce.300ms="searchTerm" placeholder="名前/作品名で検索..."
